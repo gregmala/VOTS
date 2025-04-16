@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sunseekers Try-On</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    video {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform: scaleX(-1);
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+    }
+  </style>
+</head>
+<body>
+  <video id="video" autoplay muted playsinline></video>
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+    import { FaceMesh } from 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js';
+    import { Camera } from 'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js';
+
+    let scene, camera, renderer, glasses;
+
+    const videoElement = document.getElementById('video');
+    const sceneInit = () => {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+      renderer = new THREE.WebGLRenderer({ alpha: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+      camera.position.z = 5;
+
+      const light = new THREE.DirectionalLight(0xffffff, 1);
+      light.position.set(0, 1, 1).normalize();
+      scene.add(light);
+
+      const loader = new GLTFLoader();
+      loader.load('https://gregmala.github.io/VOTS/SUNSEEKERS.glb', function (gltf) {
+        glasses = gltf.scene;
+        glasses.scale.set(1.2, 1.2, 1.2);
+        scene.add(glasses);
+      });
+    };
+
+    const updateGlassesPosition = (landmarks) => {
+      if (!glasses) return;
+      const leftEye = landmarks[33]; // approximate center of left eye
+      const rightEye = landmarks[263];
+
+      const midX = (leftEye.x + rightEye.x) / 2 - 0.5;
+      const midY = -(leftEye.y + rightEye.y) / 2 + 0.5;
+
+      glasses.position.set(midX * 4, midY * 3, 0);
+    };
+
+    const startFaceTracking = () => {
+      const faceMesh = new FaceMesh({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}` });
+      faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      faceMesh.onResults((results) => {
+        if (results.multiFaceLandmarks.length > 0) {
+          updateGlassesPosition(results.multiFaceLandmarks[0]);
+        }
+        renderer.render(scene, camera);
+      });
+
+      const cam = new Camera(videoElement, {
+        onFrame: async () => {
+          await faceMesh.send({ image: videoElement });
+        },
+        width: 1280,
+        height: 720
+      });
+      cam.start();
+    };
+
+    sceneInit();
+    startFaceTracking();
+  </script>
+</body>
+</html>
